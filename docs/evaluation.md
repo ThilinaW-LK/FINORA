@@ -425,6 +425,63 @@ and skip the explicitly enabled persistent load. The opt-in launchers pin the ve
 database and blank provider and Firebase configuration. Rehearse handset instrumentation and
 owner-approved routes against the combined source before collecting a handset acceptance sample.
 
+### Execution 44 performance qualification
+
+The qualification branch starts at the published review head 9fb383bdf3ec1607e740c508b2762687aa452a6d,
+based on upstream 812897e21fb999ebc0ff556d538a76ddb6fc818a. D57 covers only the
+T17.3, T18.4 and T19.3 functional device checks. It does not close T55.2. The reviewed
+T34 baseline includes Firebase and V23, so the retained benchmark API must continue using a
+verified compatible schema and provider-disabled configuration until schema handling is approved.
+
+The Android protected screen requests use ProtectedRequests and SessionClient. ApiClient
+constructs the OkHttp client and fixes its call factory and interceptor chain at construction.
+There is no supported test-only hook at this revision for assigning per-request IDs and measuring
+the real call lifecycle. Request timing from the independent Execution 42 probes stays separate.
+Before adding a production-source seam, obtain Sahan's approval for an opt-in hook that is inert
+for ordinary app builds. The proposed hook tags each allowlisted screen call at creation and
+emits monotonic full-call duration and outcome. Log the same request ID, method, normalized
+endpoint, response and server-local duration in the isolated server. Keep per-attempt attribution
+through retries and report each exchange distinctly if a call can issue multiple exchanges.
+Calibration requires one attempt per screen with the existing screen predicate and FrameTimeline
+query, allowing additional attempts only to diagnose a failed calibration.
+
+The test-only offline join accepts sanitized attempt, client and server records. The attempt CSV
+uses AttemptId, Route, Presentation and DisplayNs. Client rows use AttemptId, RequestId,
+Method, Endpoint, DurationNs and Outcome. Server rows omit AttemptId. Report normalized
+endpoint templates, such as /api/v1/score-inputs/{month}, with query strings and values removed.
+Attempt and request identifiers are distinct random IDs of the form t55- followed by 32 lowercase
+hex characters. Exact IDs join records without comparing clocks. Request counts and missing or
+inconsistent observations remain visible. Only qualified presentation rows may carry a displayed
+duration. No connected observations were collected in this execution.
+
+The test-only handset manifest verifier checks independently collected observations against a
+session-owner-maintained approval record. Keep both files outside the repository. Before using
+it in a separately authorized session, record consent and device classification. Pin the serial,
+model, build, Android API, active isolated user and user serial, package IDs, both APK byte
+hashes, both signer hashes and the instrumentation target. Verify loopback API identity, the
+session-owned ADB reverse mapping, disabled provider and Firebase configuration, and denied SMS
+and notification permissions. The verifier does not collect device facts or launch instrumentation.
+The existing on-device runner remains emulator-only. A handset runner must validate actual
+device/profile and package identity at runtime and fail closed before measurement.
+
+T55.2 specifies main screens under two seconds on a mid-range phone with a year of data.
+No approved device classification, exact route expansion, threshold statistic or final cohort
+and failure rules were found. Keep Home, Records, Plan to Budgets and Insights as the rehearsal
+routes. Confirm whether Bills and Goals are timed separately. Keep genuine cold process startup
+distinct from a launch-inclusive deep-screen journey, and approve both starting states and sample
+counts before measurement. Five warm-ups and 30 warm samples per route remain a proposal.
+Keep failures, timeouts and unqualified presentations in the attempt denominator and report their
+counts alongside statistics computed only over qualified observations. Client/server timing is
+supplementary. T16, T38 and independent acceptance remain open.
+
+Startup handoff for Sahan: use the Execution 42 raw traces and query referenced above. The
+external cold launch showed bindApplication 353.771 ms, first login traversal 531.634 ms,
+login inflation 57.116 ms, and MainActivity create/resume 138.761/212.632 ms. Intervals can
+overlap. The separate fresh-process Home displayed median was 2,040.318 ms and the independent
+dashboard probe took 40.913 ms client / 34.139 ms server. A targeted paired trace of first
+login traversal and session restoration should precede any proposed optimization. The data
+does not establish a root cause.
+
 ## T55.3 moderator and participant materials (draft for approval)
 
 ### Participant information and consent
