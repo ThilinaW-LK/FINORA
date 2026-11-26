@@ -3,6 +3,8 @@ package lk.finora.api.advice.rules;
 import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
+import java.util.ResourceBundle;
 import java.util.Set;
 
 import lk.finora.api.advice.ai.AdviceItem;
@@ -21,7 +23,12 @@ public final class RuleAdviceEngine {
             "SPENDING_PATTERN", "SALARY_PLAN");
 
     public static List<AdviceItem> generate(FactSheet f) {
-        List<AdviceItem> result = new ArrayList<>(coach(f));
+        return generate(f, Locale.ENGLISH);
+    }
+
+    /** Localized rendering for the unregistered D58 candidate. T25 catalogue text stays exact. */
+    public static List<AdviceItem> generate(FactSheet f, Locale locale) {
+        List<AdviceItem> result = new ArrayList<>(coach(f, locale));
         if (positive(f, FactKey.SPENDING_DEFICIT)) add(result, f, "REVIEW_SPENDING_DEFICIT",
                 "Recorded spending exceeds recorded income by LKR %s. Review the shortfall while protecting essential costs.", FactKey.SPENDING_DEFICIT);
         if (positive(f, FactKey.INCOME) && value(f, FactKey.WANTS).compareTo(value(f, FactKey.INCOME).multiply(new BigDecimal("0.40"))) > 0) {
@@ -56,20 +63,27 @@ public final class RuleAdviceEngine {
 
     /** Rule-based coaching sections for the facts that exist; a section is omitted when its core fact is missing. */
     public static List<AdviceItem> coach(FactSheet f) {
+        return coach(f, Locale.ENGLISH);
+    }
+
+    private static List<AdviceItem> coach(FactSheet f, Locale locale) {
+        ResourceBundle sinhala = "si".equals(locale.getLanguage())
+                ? ResourceBundle.getBundle("advice.coaching", Locale.forLanguageTag("si"))
+                : null;
         List<AdviceItem> out = new ArrayList<>();
         if (f.facts().containsKey(FactKey.FOCUS_GOAL_REMAINING)) {
-            out.add(new Composer(f, "GOAL_PLAN")
-                    .say("Your selected goal still needs LKR %s: LKR %s saved of LKR %s.",
+            out.add(new Composer(f, "GOAL_PLAN", sinhala)
+                    .say("goal.balance", "Your selected goal still needs LKR %s: LKR %s saved of LKR %s.",
                             FactKey.FOCUS_GOAL_REMAINING, FactKey.FOCUS_GOAL_SAVED, FactKey.FOCUS_GOAL_TARGET)
-                    .say("To reach it by the target date in %s months, move LKR %s to it every month.",
+                    .say("goal.deadline", "To reach it by the target date in %s months, move LKR %s to it every month.",
                             FactKey.FOCUS_GOAL_MONTHS_LEFT, FactKey.FOCUS_GOAL_MONTHLY_NEEDED)
-                    .say("Over the last three months you added LKR %s a month on average.", FactKey.FOCUS_GOAL_MONTHLY_PACE)
-                    .say("At that pace it takes about %s months.", FactKey.FOCUS_GOAL_MONTHS_AT_PACE)
-                    .say("With this month's salary plan below it takes about %s months.", FactKey.FOCUS_GOAL_MONTHS_WITH_PLAN)
+                    .say("goal.pace", "Over the last three months you added LKR %s a month on average.", FactKey.FOCUS_GOAL_MONTHLY_PACE)
+                    .say("goal.atPace", "At that pace it takes about %s months.", FactKey.FOCUS_GOAL_MONTHS_AT_PACE)
+                    .say("goal.withPlan", "With this month's salary plan below it takes about %s months.", FactKey.FOCUS_GOAL_MONTHS_WITH_PLAN)
                     .item());
         }
         if (f.facts().containsKey(FactKey.TOP_WANT_1_SPEND)) {
-            Composer c = new Composer(f, "CUT_WANTS");
+            Composer c = new Composer(f, "CUT_WANTS", sinhala);
             FactKey[][] keys = {
                     {FactKey.TOP_WANT_1_SPEND, FactKey.TOP_WANT_1_AVERAGE, FactKey.TOP_WANT_1_CUT},
                     {FactKey.TOP_WANT_2_SPEND, FactKey.TOP_WANT_2_AVERAGE, FactKey.TOP_WANT_2_CUT},
@@ -78,45 +92,48 @@ public final class RuleAdviceEngine {
                 String label = f.slotLabels().get("TOP_WANT_" + (i + 1));
                 if (label == null || !f.facts().containsKey(keys[i][0])) continue;
                 if (f.facts().containsKey(keys[i][1])) {
-                    c.say(label + ": LKR %s this month against a usual LKR %s. Cut LKR %s.", keys[i]);
+                    c.sayCategory("wants.withAverage", "%s: LKR %s this month against a usual LKR %s. Cut LKR %s.", label, keys[i]);
                 } else {
-                    c.say(label + ": LKR %s this month. Cut LKR %s.", keys[i][0], keys[i][2]);
+                    c.sayCategory("wants.withoutAverage", "%s: LKR %s this month. Cut LKR %s.", label, keys[i][0], keys[i][2]);
                 }
             }
-            out.add(c.say("Together these cuts free LKR %s a month for your goal.", FactKey.WANTS_CUT_TOTAL)
-                    .say("Wants took %s%% of your income.", FactKey.WANTS_SHARE).item());
+            out.add(c.say("wants.cutTotal", "Together these cuts free LKR %s a month for your goal.", FactKey.WANTS_CUT_TOTAL)
+                    .say("wants.share", "Wants took %s%% of your income.", FactKey.WANTS_SHARE).item());
         }
         if (f.facts().containsKey(FactKey.NEEDS_SHARE) && f.facts().containsKey(FactKey.TOP_NEED_1_SPEND)) {
-            Composer c = new Composer(f, "NEEDS_BEHAVIOUR").say("Needs took %s%% of your income.", FactKey.NEEDS_SHARE);
+            Composer c = new Composer(f, "NEEDS_BEHAVIOUR", sinhala).say("needs.share", "Needs took %s%% of your income.", FactKey.NEEDS_SHARE);
             FactKey[][] keys = {{FactKey.TOP_NEED_1_SPEND, FactKey.TOP_NEED_1_AVERAGE},
                     {FactKey.TOP_NEED_2_SPEND, FactKey.TOP_NEED_2_AVERAGE}};
             for (int i = 0; i < keys.length; i++) {
                 String label = f.slotLabels().get("TOP_NEED_" + (i + 1));
                 if (label == null || !f.facts().containsKey(keys[i][0])) continue;
-                if (f.facts().containsKey(keys[i][1])) c.say(label + " cost LKR %s against a usual LKR %s.", keys[i]);
-                else c.say(label + " cost LKR %s.", keys[i][0]);
+                if (f.facts().containsKey(keys[i][1])) {
+                    c.sayCategory("needs.withAverage", "%s cost LKR %s against a usual LKR %s.", label, keys[i]);
+                } else {
+                    c.sayCategory("needs.withoutAverage", "%s cost LKR %s.", label, keys[i][0]);
+                }
             }
-            out.add(c.text("Pay needs first and do not cut essentials to save faster.").item());
+            out.add(c.text("needs.protect", "Pay needs first and do not cut essentials to save faster.").item());
         }
         if (f.facts().containsKey(FactKey.SPEND_EARLY)) {
-            Composer c = new Composer(f, "SPENDING_PATTERN")
-                    .say("You spent LKR %s in the first ten days, LKR %s in the middle and LKR %s in the last part of the month.",
+            Composer c = new Composer(f, "SPENDING_PATTERN", sinhala)
+                    .say("spend.parts", "You spent LKR %s in the first ten days, LKR %s in the middle and LKR %s in the last part of the month.",
                             FactKey.SPEND_EARLY, FactKey.SPEND_MIDDLE, FactKey.SPEND_LATE)
-                    .say("That puts %s%% of the month's spending in the first ten days.", FactKey.EARLY_SPEND_SHARE);
+                    .say("spend.share", "That puts %s%% of the month's spending in the first ten days.", FactKey.EARLY_SPEND_SHARE);
             if (f.facts().get(FactKey.EARLY_SPEND_SHARE).compareTo(new BigDecimal("50")) >= 0)
-                c.text("Spending is concentrated early in the month. Plan for bills before discretionary spending.");
+                c.text("spend.concentrated", "Spending is concentrated early in the month. Plan for bills before discretionary spending.");
             out.add(c.item());
         }
         if (f.facts().containsKey(FactKey.PLAN_NEEDS)) {
-            Composer c = new Composer(f, "SALARY_PLAN");
+            Composer c = new Composer(f, "SALARY_PLAN", sinhala);
             if (f.facts().get(FactKey.PLAN_GOAL_TRANSFER).signum() > 0)
-                c.say("On payday, move LKR %s to your goal or savings first.", FactKey.PLAN_GOAL_TRANSFER);
+                c.say("salary.transfer", "On payday, move LKR %s to your goal or savings first.", FactKey.PLAN_GOAL_TRANSFER);
             else
-                c.text("Needs and the wants limit already use this month's income, so close that gap before saving more.");
-            c.say("Keep LKR %s for needs and bills.", FactKey.PLAN_NEEDS)
-                    .say("Limit wants to LKR %s, about LKR %s a week.", FactKey.PLAN_WANTS_CAP, FactKey.PLAN_WEEKLY_WANTS);
+                c.text("salary.shortfall", "Needs and the wants limit already use this month's income, so close that gap before saving more.");
+            c.say("salary.needs", "Keep LKR %s for needs and bills.", FactKey.PLAN_NEEDS)
+                    .say("salary.wants", "Limit wants to LKR %s, about LKR %s a week.", FactKey.PLAN_WANTS_CAP, FactKey.PLAN_WEEKLY_WANTS);
             if (f.facts().get(FactKey.PLAN_BUFFER).signum() > 0)
-                c.say("Keep the remaining LKR %s as a buffer for surprises.", FactKey.PLAN_BUFFER);
+                c.say("salary.buffer", "Keep the remaining LKR %s as a buffer for surprises.", FactKey.PLAN_BUFFER);
             out.add(c.item());
         }
         return List.copyOf(out);
@@ -129,20 +146,43 @@ public final class RuleAdviceEngine {
         private final StringBuilder text = new StringBuilder();
         private final List<NumberFact> numbers = new ArrayList<>();
 
-        Composer(FactSheet f, String id) { this.f = f; this.id = id; }
+        private final ResourceBundle sinhala;
 
-        Composer say(String template, FactKey... keys) {
-            Object[] shown = new Object[keys.length];
+        Composer(FactSheet f, String id, ResourceBundle sinhala) {
+            this.f = f;
+            this.id = id;
+            this.sinhala = sinhala;
+        }
+
+        Composer say(String message, String english, FactKey... keys) {
+            return say(message, english, new ArrayList<>(), keys);
+        }
+
+        Composer sayCategory(String message, String english, String label, FactKey... keys) {
+            List<String> shown = new ArrayList<>();
+            shown.add(localize("category." + label, label));
+            return say(message, english, shown, keys);
+        }
+
+        private Composer say(String message, String english, List<String> shown, FactKey... keys) {
             for (int i = 0; i < keys.length; i++) {
                 BigDecimal v = f.facts().get(keys[i]);
                 if (v == null) return this;
-                shown[i] = "LKR".equals(keys[i].unit()) ? v.setScale(2).toPlainString() : v.stripTrailingZeros().toPlainString();
+                shown.add("LKR".equals(keys[i].unit()) ? v.setScale(2).toPlainString() : v.stripTrailingZeros().toPlainString());
             }
             for (FactKey key : keys) numbers.add(new NumberFact(key, f.facts().get(key).setScale(2), key.unit(), f.month()));
-            return text(String.format(java.util.Locale.ROOT, template, shown));
+            return append(String.format(Locale.ROOT, localize(message, english), shown.toArray()));
         }
 
-        Composer text(String sentence) {
+        Composer text(String message, String english) {
+            return append(localize(message, english));
+        }
+
+        private String localize(String message, String english) {
+            return sinhala == null ? english : sinhala.getString(message);
+        }
+
+        private Composer append(String sentence) {
             if (!text.isEmpty()) text.append(' ');
             text.append(sentence);
             return this;

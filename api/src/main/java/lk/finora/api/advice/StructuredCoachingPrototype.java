@@ -3,6 +3,8 @@ package lk.finora.api.advice;
 import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
+import java.util.ResourceBundle;
 import java.util.Set;
 
 import lk.finora.api.advice.ai.AdviceItem;
@@ -24,7 +26,7 @@ final class StructuredCoachingPrototype {
         NO_AFFORDABLE_TRANSFER, INSUFFICIENT_FOR_TARGET_DATE, ESTIMATE_UNAVAILABLE
     }
 
-    record Delivery(boolean personalized, List<AdviceItem> sections, List<Warning> warnings) {
+    record Delivery(boolean personalized, List<AdviceItem> sections, List<Warning> warnings, Locale locale) {
         Delivery {
             sections = List.copyOf(sections);
             warnings = List.copyOf(warnings);
@@ -33,13 +35,21 @@ final class StructuredCoachingPrototype {
         List<AdviceItem> forDisplay() {
             if (warnings.isEmpty()) return sections;
             var result = new ArrayList<AdviceItem>(sections);
-            var messages = warnings.stream().map(warning -> switch (warning) {
+            var messages = warnings.stream().map(this::warningText).toList();
+            result.add(new AdviceItem("COACHING_WARNINGS", String.join(" ", messages), List.of()));
+            return List.copyOf(result);
+        }
+
+        private String warningText(Warning warning) {
+            if ("si".equals(locale.getLanguage())) {
+                return ResourceBundle.getBundle("advice.coaching", Locale.forLanguageTag("si"))
+                        .getString("warning." + warning.name());
+            }
+            return switch (warning) {
                 case ESTIMATE_UNAVAILABLE -> "A completion estimate is unavailable from the recorded inputs.";
                 case NO_AFFORDABLE_TRANSFER -> "The calculated plan leaves no affordable transfer.";
                 case INSUFFICIENT_FOR_TARGET_DATE -> "The calculated transfer falls short of the target date requirements.";
-            }).toList();
-            result.add(new AdviceItem("COACHING_WARNINGS", String.join(" ", messages), List.of()));
-            return List.copyOf(result);
+            };
         }
     }
 
@@ -54,19 +64,23 @@ final class StructuredCoachingPrototype {
     }
 
     Delivery deliver(FactSheet facts, String providerReply) {
-        var canonical = RuleAdviceEngine.generate(facts);
+        return deliver(facts, providerReply, Locale.ENGLISH);
+    }
+
+    Delivery deliver(FactSheet facts, String providerReply, Locale locale) {
+        var canonical = RuleAdviceEngine.generate(facts, locale);
         var warnings = warnings(facts);
         var focus = parse(providerReply);
-        if (focus == null) return new Delivery(false, canonical, warnings);
+        if (focus == null) return new Delivery(false, canonical, warnings, locale);
 
         var ordered = new ArrayList<>(canonical);
         for (int i = 0; i < ordered.size(); i++) {
             if (focus.name().equals(ordered.get(i).actionId())) {
                 ordered.add(0, ordered.remove(i));
-                return new Delivery(true, ordered, warnings);
+                return new Delivery(true, ordered, warnings, locale);
             }
         }
-        return new Delivery(false, canonical, warnings);
+        return new Delivery(false, canonical, warnings, locale);
     }
 
     private static Focus parse(String reply) {
